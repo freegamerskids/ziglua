@@ -11,12 +11,14 @@ pub fn configure(b: *Build, target: Build.ResolvedTarget, optimize: std.builtin.
             .name = "lua",
             .target = target,
             .optimize = optimize,
+            .unwind_tables = .sync,
         })
     else
         b.addStaticLibrary(.{
             .name = "lua",
             .target = target,
             .optimize = optimize,
+            .unwind_tables = .sync,
         });
 
     // Compile minilua interpreter used at build time to generate files
@@ -43,7 +45,7 @@ pub fn configure(b: *Build, target: Build.ResolvedTarget, optimize: std.builtin.
     if (target.result.ptrBitWidth() == 64) dynasm_run.addArgs(&.{ "-D", "P64" });
     dynasm_run.addArgs(&.{ "-D", "JIT", "-D", "FFI" });
 
-    if (target.result.abi.floatAbi() == .hard) {
+    if (target.result.abi.float() == .hard) {
         dynasm_run.addArgs(&.{ "-D", "FPU", "-D", "HFABI" });
     }
 
@@ -128,16 +130,14 @@ pub fn configure(b: *Build, target: Build.ResolvedTarget, optimize: std.builtin.
     const buildvm_folddef = b.addRunArtifact(buildvm);
     buildvm_folddef.addArgs(&.{ "-m", "folddef", "-o" });
     const folddef_header = buildvm_folddef.addOutputFileArg("lj_folddef.h");
-    for (luajit_lib) |file| {
-        buildvm_folddef.addFileArg(upstream.path(file));
-    }
+    buildvm_folddef.addFileArg(upstream.path("src/lj_opt_fold.c"));
 
     const buildvm_ljvm = b.addRunArtifact(buildvm);
     buildvm_ljvm.addArg("-m");
 
     if (target.result.os.tag == .windows) {
         buildvm_ljvm.addArg("peobj");
-    } else if (target.result.isDarwin()) {
+    } else if (target.result.os.tag.isDarwin()) {
         buildvm_ljvm.addArg("machasm");
     } else {
         buildvm_ljvm.addArg("elfasm");
@@ -163,9 +163,9 @@ pub fn configure(b: *Build, target: Build.ResolvedTarget, optimize: std.builtin.
 
     lib.linkLibC();
 
-    lib.root_module.addCMacro("LUAJIT_UNWIND_EXTERNAL", "1");
+    lib.root_module.addCMacro("LUAJIT_UNWIND_EXTERNAL", "");
+
     lib.linkSystemLibrary("unwind");
-    lib.root_module.unwind_tables = .sync;
 
     lib.addIncludePath(upstream.path("src"));
     lib.addIncludePath(luajit_h.dirname());
